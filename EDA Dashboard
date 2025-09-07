@@ -1,0 +1,74 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Streamlit configuration
+st.set_page_config(page_title="Stock EDA", layout="centered")
+st.title("📈 Stock EDA Dashboard using Yahoo Finance")
+
+# Sidebar inputs
+ticker = st.sidebar.text_input("Enter Stock Ticker (e.g. AAPL, TSLA):", "AAPL").upper()
+start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2022-01-01"))
+end_date = st.sidebar.date_input("End Date", pd.to_datetime("2023-01-01"))
+
+# Function to fetch and clean data
+@st.cache_data
+def load_data(ticker, start, end):
+    data = yf.download(ticker, start=start, end=end)
+
+    # If columns are MultiIndex (which happens even for a single ticker sometimes)
+    if isinstance(data.columns, pd.MultiIndex):
+        # Flatten MultiIndex columns properly
+        data.columns = ['_'.join(col).strip() for col in data.columns.values]
+
+    # Rename columns to standard names if they have suffixes
+    rename_dict = {
+        f"Open_{ticker}": "Open",
+        f"High_{ticker}": "High",
+        f"Low_{ticker}": "Low",
+        f"Close_{ticker}": "Close",
+        f"Adj Close_{ticker}": "Adj Close",
+        f"Volume_{ticker}": "Volume"
+    }
+    data.rename(columns=rename_dict, inplace=True)
+
+    data.dropna(inplace=True)
+    return data
+
+# Load the stock data
+data = load_data(ticker, start_date, end_date)
+
+# Display raw data
+st.subheader(f"📄 Raw Data for {ticker}")
+st.write(data.tail())
+
+# Summary statistics
+st.subheader("📊 Summary Statistics")
+st.write(data.describe())
+
+# Closing price chart
+st.subheader("📉 Closing Price Over Time")
+if "Close" in data.columns:
+    st.line_chart(data['Close'])
+else:
+    st.warning("⚠️ 'Close' column not found in the data.")
+
+# Moving Average
+st.subheader("📈 Moving Average")
+ma_period = st.slider("Select MA Window Size (days):", 5, 100, 20)
+if "Close" in data.columns:
+    data[f"MA_{ma_period}"] = data['Close'].rolling(window=ma_period).mean()
+    st.line_chart(data[['Close', f"MA_{ma_period}"]])
+
+# Volume plot
+st.subheader("📦 Volume Traded")
+if "Volume" in data.columns:
+    st.bar_chart(data['Volume'])
+
+# Correlation heatmap
+st.subheader("🔍 Correlation Heatmap")
+fig, ax = plt.subplots()
+sns.heatmap(data.corr(numeric_only=True), annot=True, cmap="coolwarm", ax=ax)
+st.pyplot(fig)
